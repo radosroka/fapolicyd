@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/linux-application-whitelisting/fapolicyd.svg?branch=master)](https://travis-ci.com/linux-application-whitelisting/fapolicyd)
+
 File Access Policy Daemon
 
 This is a simple application whitelisting daemon for Linux.
