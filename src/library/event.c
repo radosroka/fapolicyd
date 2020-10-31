@@ -65,6 +65,7 @@ int init_event_system(const conf_t *config)
 
 static int flush_cache(void)
 {
+  {
 	if (obj_cache->count == 0)
 		return 0;
 
@@ -77,7 +78,23 @@ static int flush_cache(void)
 				(void (*)(void *))object_clear, "Object");
 	if (!obj_cache)
 		return 1;
+  }
 
+
+  {
+	if (subj_cache->count == 0)
+		return 0;
+
+	const unsigned int size = subj_cache->total;
+
+	msg(LOG_DEBUG, "Flushing subject cache");
+	destroy_lru(subj_cache);
+
+	subj_cache = init_lru(size,
+			     (void (*)(void *))subject_clear, "Subject");
+	if (!subj_cache)
+		return 1;
+  }
 	msg(LOG_DEBUG, "Flushed");
 
 	return 0;
