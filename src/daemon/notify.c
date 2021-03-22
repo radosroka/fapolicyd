@@ -336,9 +336,18 @@ void handle_events(void)
 		do {
 			len = read(fd, (void *) buf, sizeof(buf));
 		} while (len == -1 && errno == EINTR && stop == 0);
-		if (len == -1 && errno != EAGAIN) {
-			msg(LOG_ERR,"Error reading (%s)", strerror(errno));
-			exit(1);
+
+		if (len == -1) {
+
+			if (errno == EPERM) {
+				msg(LOG_WARNING,"Fanotify: Cannot access: (%s)", strerror(errno));
+				return;
+			}
+
+			if (errno != EAGAIN) {
+				msg(LOG_ERR,"Error reading (%s)", strerror(errno));
+				exit(1);
+			}
 		}
 		if (stop)
 			return;
