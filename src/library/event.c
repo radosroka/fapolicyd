@@ -119,9 +119,28 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	if (pinfo == NULL)
 		return 1;
 
+	msg(LOG_DEBUG, "\n\nnew-event: s=%p", s);
+	msg(LOG_DEBUG, "new-event: skip_path=%d", skip_path);
+	msg(LOG_DEBUG, "new-event: evict=%d", evict);
+
 	// Check the subject to see if its what its supposed to be
 	if (s) {
 		rc = compare_proc_infos(pinfo, s->info);
+
+		msg(LOG_DEBUG, "new-event: IN rc=%d", rc);
+
+
+		if (e->type & FAN_OPEN_EXEC_PERM)
+			msg(LOG_DEBUG, "new-event: IN type=%d -> EXEC_PERM", e->type);
+		else
+			msg(LOG_DEBUG, "new-event: IN type=%d -> OPEN_PERM", e->type);
+
+		msg(LOG_DEBUG, "new-event: IN ls_so=%s", SYSTEM_LD_SO);
+		msg(LOG_DEBUG, "new-event: IN sinfo=%p", s->info);
+		msg(LOG_DEBUG, "new-event: IN sinfo->path1=%s", s->info->path1);
+
+		msg(LOG_DEBUG, "new-event: IN state=%d", s->info->state);
+
 
 		// EXEC_PERM causes 2 events for every execute. First is an
 		// execute request. This is followed by an open request of
@@ -132,7 +151,15 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if ((s->info->state == STATE_COLLECTING) &&
 			(e->type & FAN_OPEN_PERM) && !rc) {
 			skip_path = 1;
+
 			s->info->state = STATE_REOPEN;
+
+			// special branch after ld_so exec
+			// next opens will go fall trough
+			if (s->info->path1 &&
+				(strcmp(s->info->path1, SYSTEM_LD_SO) == 0))
+				s->info->state = STATE_DEFAULT_REOPEN;
+
 		}
 
 		// If not same proc or we detect execution, evict
@@ -164,6 +191,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			skip_path = 1;
 		}
 
+
 		// If we've seen the reopen and its an execute and process
 		// has an interpreter and we're the same process, don't evict
 		// and don't collect the path since reopen interp will. The
@@ -172,17 +200,40 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 		if ((s->info->state == STATE_REOPEN) && !skip_path &&
 				(e->type & FAN_OPEN_EXEC_PERM) &&
 				(s->info->elf_info & HAS_INTERP) && !rc) {
+			s->info->state = STATE_DEFAULT_REOPEN;
 			evict = 0;
 			skip_path = 1;
 		}
+
+
+		// this is what differs between STATE_REOPEN and
+		// STATE_DEFAULT_REOPEN
+		// in STATE_REOPEN path is always skipped
+		if ((s->info->state == STATE_REOPEN) && !skip_path &&
+				(e->type & FAN_OPEN_PERM) && !rc) {
+			skip_path = 1;
+		}
+
+
+
+
+		msg(LOG_DEBUG, "new-event: out state=%d", s->info->state);
+
 
 		if (evict) {
 			lru_evict(subj_cache, key);
 			q_node = check_lru_cache(subj_cache, key);
 			s = (s_array *)q_node->item;
+
 		} else if (s->cnt == 0)
 			msg(LOG_DEBUG, "cached subject has cnt of 0");
+
+		msg(LOG_DEBUG, "new-event: IN skip_path=%d", skip_path);
+		msg(LOG_DEBUG, "new-event: IN evict=%d", evict);
 	}
+
+	msg(LOG_DEBUG, "new-event: OUT skip_path=%d", skip_path);
+	msg(LOG_DEBUG, "new-event: OUT evict=%d", evict);
 
 	if (evict) {
 		// If empty, setup the subject with what we currently have
@@ -272,6 +323,9 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			}
 		} 
 	}
+
+	msg(LOG_DEBUG, "new-event: OUT path1=%s", pinfo->path1);
+	msg(LOG_DEBUG, "new-event: OUT path2=%s", pinfo->path2);
 	return 0;
 }
 
