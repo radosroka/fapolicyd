@@ -119,28 +119,9 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 	if (pinfo == NULL)
 		return 1;
 
-	msg(LOG_DEBUG, "\n\nnew-event: s=%p", s);
-	msg(LOG_DEBUG, "new-event: skip_path=%d", skip_path);
-	msg(LOG_DEBUG, "new-event: evict=%d", evict);
-
 	// Check the subject to see if its what its supposed to be
 	if (s) {
 		rc = compare_proc_infos(pinfo, s->info);
-
-		msg(LOG_DEBUG, "new-event: IN rc=%d", rc);
-
-
-		if (e->type & FAN_OPEN_EXEC_PERM)
-			msg(LOG_DEBUG, "new-event: IN type=%d -> EXEC_PERM", e->type);
-		else
-			msg(LOG_DEBUG, "new-event: IN type=%d -> OPEN_PERM", e->type);
-
-		msg(LOG_DEBUG, "new-event: IN ls_so=%s", SYSTEM_LD_SO);
-		msg(LOG_DEBUG, "new-event: IN sinfo=%p", s->info);
-		msg(LOG_DEBUG, "new-event: IN sinfo->path1=%s", s->info->path1);
-
-		msg(LOG_DEBUG, "new-event: IN state=%d", s->info->state);
-
 
 		// EXEC_PERM causes 2 events for every execute. First is an
 		// execute request. This is followed by an open request of
@@ -214,12 +195,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			skip_path = 1;
 		}
 
-
-
-
-		msg(LOG_DEBUG, "new-event: out state=%d", s->info->state);
-
-
 		if (evict) {
 			lru_evict(subj_cache, key);
 			q_node = check_lru_cache(subj_cache, key);
@@ -227,13 +202,7 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 
 		} else if (s->cnt == 0)
 			msg(LOG_DEBUG, "cached subject has cnt of 0");
-
-		msg(LOG_DEBUG, "new-event: IN skip_path=%d", skip_path);
-		msg(LOG_DEBUG, "new-event: IN evict=%d", evict);
 	}
-
-	msg(LOG_DEBUG, "new-event: OUT skip_path=%d", skip_path);
-	msg(LOG_DEBUG, "new-event: OUT evict=%d", evict);
 
 	if (evict) {
 		// If empty, setup the subject with what we currently have
@@ -323,9 +292,6 @@ int new_event(const struct fanotify_event_metadata *m, event_t *e)
 			}
 		} 
 	}
-
-	msg(LOG_DEBUG, "new-event: OUT path1=%s", pinfo->path1);
-	msg(LOG_DEBUG, "new-event: OUT path2=%s", pinfo->path2);
 	return 0;
 }
 
