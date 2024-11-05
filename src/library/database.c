@@ -32,6 +32,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <errno.h>
+#include <sys/syslog.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <ctype.h>
@@ -1224,9 +1225,17 @@ static void do_reload_db(conf_t* config)
 	msg(LOG_INFO,"It looks like there was an update of the system... Syncing DB.");
 
 	int rc;
-	backend_close();
-	backend_init(config);
-	backend_load(config);
+
+	msg(LOG_DEBUG, "Sleep Start");
+	sleep(5);
+	msg(LOG_DEBUG, "Sleep End");
+
+
+	for(int i = 0 ; i < 3 ; i++) {
+		backend_close();
+		backend_init(config);
+		backend_load(config);
+	}
 
 	if ((rc = update_database(config))) {
 		msg(LOG_ERR,

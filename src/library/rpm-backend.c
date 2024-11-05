@@ -26,6 +26,7 @@
 #include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/syslog.h>
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -372,6 +373,8 @@ static int rpm_load_list(const conf_t *conf)
 		free((void*)item->key);
 		free((void*)item);
 	}
+
+	msg(LOG_DEBUG, "RPM Backend loaded: %ld", rpm_backend.list.count);
 
 	return 0;
 }

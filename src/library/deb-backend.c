@@ -180,6 +180,9 @@ static int deb_load_list(const conf_t *conf)
   }
 
   pkg_array_destroy(&array);
+
+  msg(LOG_DEBUG, "DEB Backend loaded: %ld", deb_backend.list.count);
+
   return 0;
 }
 
