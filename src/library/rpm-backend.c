@@ -50,6 +50,7 @@ static int rpm_init_backend(void);
 static int rpm_load_list(const conf_t *);
 static int rpm_destroy_backend(void);
 
+static long last_loaded = 0;
 volatile atomic_bool ongoing_rpm_operation = 0;
 
 backend rpm_backend =
@@ -261,7 +262,13 @@ struct _hash_record {
 extern unsigned int debug_mode;
 static int rpm_load_list(const conf_t *conf)
 {
-	int rc;
+	int rc = 0;
+	int iter = 0;
+	long loaded = 0;
+	do {
+
+	iter++;
+
 	unsigned int msg_count = 0;
 	unsigned int tsource = SRC_RPM;
 
@@ -273,10 +280,12 @@ static int rpm_load_list(const conf_t *conf)
 
 	ongoing_rpm_operation = 1;
 
-	msg(LOG_INFO, "Loading rpmdb backend");
+	if (iter == 1)
+		msg(LOG_INFO, "Loading rpmdb backend");
 	if ((rc = init_rpm())) {
 		msg(LOG_ERR, "init_rpm() failed (%d)", rc);
-		return rc;
+		ongoing_rpm_operation = 0;
+		continue;
 	}
 
 	// Loop across the rpm database
@@ -373,7 +382,15 @@ static int rpm_load_list(const conf_t *conf)
 		free((void*)item);
 	}
 
-	return 0;
+	loaded = rpm_backend.list.count;
+
+	} while((loaded == 0 || last_loaded == loaded) && iter < 2);
+
+	last_loaded = loaded;
+
+	msg(LOG_INFO, "RPM Backend loaded: %ld", loaded);
+
+	return rc;
 }
 
 static int rpm_init_backend(void)

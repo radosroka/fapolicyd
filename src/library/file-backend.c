@@ -55,6 +55,8 @@ static int file_load_list(const conf_t *conf)
 	msg(LOG_DEBUG, "Loading file backend");
 	list_empty(&file_backend.list);
 	trust_file_load_all(&file_backend.list);
+	long loaded = file_backend.list.count;
+	msg(LOG_INFO, "FILE Backend loaded: %ld", loaded);
 	return 0;
 }
 
