@@ -26,6 +26,7 @@
 #include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/syslog.h>
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <unistd.h>
@@ -132,6 +133,7 @@ static void destroy_fd_buffer(void) {
 }
 
 static rpmts ts = NULL;
+static rpmtxn txn = NULL;
 static rpmdbMatchIterator mi = NULL;
 
 static int init_rpm(void)
@@ -140,11 +142,38 @@ static int init_rpm(void)
 }
 
 static Header h = NULL;
-static int get_next_package_rpm(void)
+#define MAX_RETRIES 10
+static int get_next_package_rpm(int *error)
 {
 	// If this is the first time, create a package iterator
 	if (mi == NULL) {
 		ts = rpmtsCreate();
+
+		int i = 0;
+		while (1) {
+			txn = rpmtxnBegin(ts, 0);
+
+			msg(LOG_DEBUG, "Waiting for RPM transaction lock");
+
+			if (txn == NULL) {
+				if (i < MAX_RETRIES)
+					sleep(1);
+			} else {
+				break;
+			}
+
+			if (i >= MAX_RETRIES)
+				break;
+			i++;
+		}
+
+		if (txn == NULL) {
+			*error = 1;
+			return 0;
+		}
+
+		msg(LOG_DEBUG, "Got %d iterations", i);
+
 		mi = rpmtsInitIterator(ts, RPMDBI_PACKAGES, NULL, 0);
 		if (mi == NULL)
 			return 0;
@@ -245,6 +274,8 @@ static void close_rpm(void)
 	h = NULL;
 	rpmdbFreeIterator(mi);
 	mi = NULL;
+	rpmtxnEnd(txn);
+	txn = NULL;
 	rpmtsFree(ts);
 	ts = NULL;
 	rpmFreeCrypto();
@@ -262,6 +293,7 @@ extern unsigned int debug_mode;
 static int rpm_load_list(const conf_t *conf)
 {
 	int rc;
+	int error = 0;
 	unsigned int msg_count = 0;
 	unsigned int tsource = SRC_RPM;
 
@@ -280,7 +312,7 @@ static int rpm_load_list(const conf_t *conf)
 	}
 
 	// Loop across the rpm database
-	while (get_next_package_rpm()) {
+	while (get_next_package_rpm(&error)) {
 		// Loop across the packages
 		while (get_next_file_rpm()) {
 			// We do not want directories or symlinks in the
@@ -372,6 +404,12 @@ static int rpm_load_list(const conf_t *conf)
 		free((void*)item->key);
 		free((void*)item);
 	}
+
+	if (error) {
+		msg(LOG_INFO, "Could not acquire lock for rpmdb, staying with old db");
+		return 1;
+	}
+
 
 	return 0;
 }
