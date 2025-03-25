@@ -23,12 +23,15 @@
  */
 
 #include "config.h"
+#include <stdio.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <string.h>
+#include <sys/syslog.h>
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <rpm/rpmlib.h>
 #include <rpm/rpmts.h>
 #include <rpm/rpmmacro.h>
@@ -132,6 +135,7 @@ static void destroy_fd_buffer(void) {
 }
 
 static rpmts ts = NULL;
+static rpmtxn txn = NULL;
 static rpmdbMatchIterator mi = NULL;
 
 static int init_rpm(void)
@@ -139,12 +143,42 @@ static int init_rpm(void)
 	return rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
 }
 
+#define MAX_ITER 60
+#define MAX_ITER_START 5
 static Header h = NULL;
+static int start = 1;
 static int get_next_package_rpm(void)
 {
 	// If this is the first time, create a package iterator
 	if (mi == NULL) {
 		ts = rpmtsCreate();
+
+		int stderr_fd = dup(fileno(stderr)); // Duplicate stderr
+		int devnull = open("/dev/null", O_WRONLY);
+
+		if (devnull == -1 || stderr_fd == -1)
+			return 0;
+
+		dup2(devnull, fileno(stderr)); // Redirect stderr to /dev/null
+		close(devnull);
+
+		int i = 0;
+		while ((txn = rpmtxnBegin(ts, RPMTXN_READ)) == NULL) {
+			i++;
+			if (i >= MAX_ITER)
+				break;
+			if (start && (i >= MAX_ITER_START)) {
+				start = 0;
+				break;
+			}
+			sleep(1);
+		}
+
+		dup2(stderr_fd, fileno(stderr)); // Restore stderr
+		close(stderr_fd);
+
+		msg(LOG_DEBUG, "Got lock on %d iterations", i);
+
 		mi = rpmtsInitIterator(ts, RPMDBI_PACKAGES, NULL, 0);
 		if (mi == NULL)
 			return 0;
@@ -245,6 +279,10 @@ static void close_rpm(void)
 	h = NULL;
 	rpmdbFreeIterator(mi);
 	mi = NULL;
+	if (txn) {
+		rpmtxnEnd(txn);
+		txn = NULL;
+	}
 	rpmtsFree(ts);
 	ts = NULL;
 	rpmFreeCrypto();
