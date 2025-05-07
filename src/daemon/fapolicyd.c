@@ -102,11 +102,12 @@ static void install_syscall_filter(void)
 	ctx = seccomp_init(SCMP_ACT_ALLOW);
 	if (ctx == NULL)
 		goto err_out;
-
+#ifdef WITH_RPM
 	rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EACCES),
 				SCMP_SYS(execve), 0);
 	if (rc < 0)
 		goto err_out;
+#endif
 #ifdef HAVE_FEXECVE
 # ifdef __NR_fexecve
 	rc = seccomp_rule_add(ctx, SCMP_ACT_ERRNO(EACCES),
