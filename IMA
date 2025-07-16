@@ -1,0 +1,349 @@
+# How to Set Up IMA (Integrity Measurement Architecture)
+
+## Step-by-Step Guide
+
+### 1. Ensure `securityfs` is mounted:
+```bash
+mount -l | grep securityfs
+```
+Example output:
+```
+§ mount -1 | fgrep securityfs
+jecurityfs on /sys/kernel/security type securityfs (rw,nosuid, nodev,noexec, relatime)
+si
+```
+### 2. Confirm IMA kernel options are configured:
+```bash
+grep -e IMA -e INTEGRITY /boot/config-$(uname -r)
+```
+Example output:
+```
+$ fgrep -e IMA -e INTEGRITY /boot/config-4.18.0-80.11.2.e18_0.x86_64
+CONFIG BLK _DEV_INTEGRIT’
+
+CONFIG _KEXEC_BZIMAGE_VERIFY_SIG=-y
+
+# CONFIG WIMAX is not set
+
+CONFIG _DM_INTEGRITY=m
+
+CONFIG _MLXSW_MINIMAL=m
+CONFIG_FB_CFB_IMAGEBLIT=y
+CONFIG_FB_SYS_IMAGEBLIT=m
+CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY=y
+CONFIG_HID_PRIMAX=m
+
+CONFIG_INTEGRITY=y
+CONFIG_INTEGRITY_SIGNATURE=y
+
+CONFIG INTEGRITY ASYMMETRIC KEYS=y
+CONFIG_INTEGRITY_TRUSTED_KEYRING=y
+CONFIG INTEGRITY PLATFORM KEYRING=y
+CONFIG_INTEGRITY_AUDIT=y
+
+CONFIG_IMA=y
+CONFIG_IMA_MEASURE_PCR_IDX=10
+CONFIG_IMA_LSM RULES-y_
+
+$ CONFIG INA TEMPLATE is not set
+CONFIG_IMA_NG_TEMPLATE=y
+
+$ CONFIG INA SIG TEMPLATE is not set
+CONFIG_IMA_DEFAULT_TEMPLATE="ima-ng”
+CONFIG _IMA DEFAULT HASH SHAL=y
+
+# CONFIG_IMA_DEFAULT_HASH_SHA2S6 is not set
+CONFIG _IMA_DEFAULT_HASH="shal"
+
+$ CONFIG_IMA WRITE POLICY is not set
+
+$ CONFIG_IMA READ POLICY is not set
+CONFIG_IMA_APPRAISE=y
+CONFIG_IMA_APPRAISE_BOOTPARAM=y
+CONFIG_IMA_TRUSTED_KEYRING=y
+
+$ CONFIG IMA BLACKLIST KEYRING is not set
+$ CONFIG IMA LOAD _XS09 is not set
+
+```
+### 3. Ensure the file system supports `i_version`:
+
+- `ext4` has `i_version` enabled by default.
+
+- Other filesystems like XFS and ext3 require it to be explicitly enabled in `/etc/fstab`.
+
+Example `/etc/fstab` entry:
+
+```
+[shearerd@awc-devel fapolicyd]$ cat /etc/fstab
+
+/etc/fstab
+Created by anaconda on Wed Apr 22 11:31:17 2020
+
+See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info
+
+After editing this file, run ‘systemctl daemon-reload' to update systemd
+
+#
+#
+#
+#
+# Accessible filesystems, by reference, are maintained under '/dev/disk/'
+#
+#
+#
+# units generated from this file.
+
+#
+/dev/mapper/cl_awc--devel-root / ext4 defaults, iversion 1 1
+UUID=f26b7db8 -4935-4507-9722-79ad9eb5c55b /boot ext4 defaults 1 2
+
+/dev/mapper/cl_awc--devel-swap swap swap defaults 0 0
+```
+Check if `i_version` is enabled:
+
+```bash
+mount -l | grep version
+```
+Example output:
+```
+[shearerd@awc-devel fapolicyd]$ mount -l | grep version
+/dev/mapper/cl_awc--devel-root on / type ext4 (rw,relatime,seclabel,i version)
+[shearerd@awc-devel fapolicyd]$ |
+```
+### 4. Enable IMA in appraise fix mode:
+
+**a.** Backup the grub config:
+
+```bash
+cp /etc/default/grub /etc/default/grub.orig
+```
+**b.** Edit `/etc/default/grub` to include IMA settings:
+
+```
+3_TIMEOUT=5
+GRUB_DISTRIBUTOR="5 (sed
+GRUB_DEFAULT=2aved
+GRUB_DISABLE_SUBMENU-true
+GRUB_TERMINAL_OUTPUT="console”
+GRUB_CMDLINE_LINUX="crashkernel=auto ima_policy=tcb ima_appraise_tcb ima_appraise=fix ima_hash=sha2S6 ima_audit=1 resume=/dev/mapper/cl-swap rd.lvm.lv=cl/root rd.lvm.lv=cl/swap rhgb quiet”
+GRUB_DISABLE_RECOVERY="true"
+GRUB_ENABLE_BLSCFG=true
+```
+**c.** Rebuild grub:
+
+- BIOS-based machines:
+```bash
+grub2-mkconfig -o /boot/grub2/grub.cfg
+```
+- UEFI-based machines:
+```bash
+grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
+```
+**d.** Reboot machine:
+
+```bash
+reboot
+```
+**e.** Confirm that the IMA directory structure is present:
+
+```bash
+1s /sys/kernel/security/
+
+evm ima integrity ism
+
+§ 1s /sys/kernei/security/ima
+
+ascii runtime measurements policy violations
+binary_runtime measurements runtime measurements_count
+
+```
+**f.** Label files:
+
+```bash
+find / -fstype ext4 -type f -uid 0 -exec dd if='{}' of=/dev/null count=0 status=none \;
+```
+**g.** [OPTIONAL] View measurements:
+
+```bash
+tail -f /sys/kernel/security/ima/ascii_runtime_measurements
+```
+### 5. View contents of security labels:
+
+```bash
+jsh-4.4$ getfattr -m “security --dump -e hex /bin/bash
+oetfattr: Removing leading '/' from absolute path names
+
+# file: bin/bash
+
+security. ima=0x040420557151302622baSc281893436a62164538C7 7bd43452267fa2da6c3cf23ed8
+security. selinux=0x73797374656d5£753a6£626a6563745£723a7368656CEcS£E657865635£743a733000
+```
+### 6. Enable enforcement mode:
+
+**a.** Edit grub to include: ima_appraise=enforce
+
+```bash
+3_TIMEOUT=5
+GRUB_DISTRIBUTOR="5 (sed
+GRUB_DEFAULT=2aved
+GRUB_DISABLE_SUBMENU-true
+GRUB_TERMINAL_OUTPUT="console”
+GRUB_CMDLINE_LINUX="crashkernel=auto ima_policy=tcb ima_appraise_tcb ima_appraise=fix ima_appraise=enforce ima_hash=sha2S6 ima_audit=1 resume=/dev/mapper/cl-swap rd.lvm.lv=cl/root rd.lvm.lv=cl/swap rhgb quiet”
+GRUB_DISABLE_RECOVERY="true"
+GRUB_ENABLE_BLSCFG=true
+
+```
+**b.** Rebuild grub and reboot:
+
+```bash
+reboot
+```
+### 7. Optional: Test Appraisal
+
+- Change a file:
+  ```bash
+echo "foo" >> /usr/bin/gzip
+```
+- Reboot with enforcement on and attempt to run:
+  ```bash
+gzip
+```
+- Should result in `Permission denied`.
+
+---
+
+### Output from ima_image_2_2.png
+```
+1s /sys/kernel/security/
+
+evm ima integrity ism
+
+§ 1s /sys/kernei/security/ima
+
+aecii runtime measurements policy violations
+fbinary_runtime measurements runtime measurements_count
+```
+### Output from ima_image_2_3.png
+```
+jsh-4.4$ getfattr -m “security --dump -e hex /bin/bash
+oetfattr: Removing leading '/' from absolute path names
+
+# file: bin/bash
+
+security. ima=0x040420557151302622baSc281893436a62164538C7 7bd43452267fa2da6c3cf23ed8
+security. selinux=0x73797374656d5£753a6£626a6563745£723a7368656CEcS£E657865635£743a733000
+```
+### Output from ima_image_2_4.png
+```
+GRUB_TIMEOUT=S
+GRUB_DISTRIBUTOR="$ (sed
+GRUB_DEFAULT=saved
+GRUB_DISABLE_SUBMENU=true
+GRUB_TERMINAL OUTPUT="console"
+
+GRUB_CMDLINE_LINUX="crashkernel=auto ima_policy-tcb ima_eppraise_ccb ima_apprais
+evenforc| ima nashwsha2Sc ima auditel resune=/dev/nappez/cl-swap rd.lvm.lv=cl/=q
+ot rd.lum.1v=Cl/swap ragb quiee™
+
+GRUS DISABLE RECOVERY="crue™
+
+GRUB_ENABLE BLSCFG=true
+
+release .*$,,g" /etc/system-release)"
+```
+### Output from ima_image_2_5.png
+```
+GRUB_TIMEOUT=S
+GRUB_DISTRIBUTOR="$ (sed
+GRUB_DEFAULT=saved
+GRUB_DISABLE_SUBMENU=true
+GRUB_TERMINAL_OUTPUT="console"
+
+GRUB_CMDLINE_EINUX="crashkernel=auto ima policy=tcb ima appraise_tcb ima_apprais|
+enoff ima hash=sha25€ ima_audit=1 resume=/dev/mapper/cl-swap rd.1vm.1v=cl/root =|
+d.ivm.1v=cl/swap rhgb quiet”
+
+GRUB_DISABLE_RECOVERY="true"
+
+<RUB ENABLE BLSCFG=truc
+
+release .*S,,9" /etc/system-release)"
+```
+### Output from ima_image_2_6.png
+```
+|= sudo grub2-mkconfig -o /boot/grub2/grub.cfig
+Generating grub configuration file
+
+done
+- 2
+```
+### Output from ima_image_3_1.png
+```
+i$ sudo less /sys/kernel/security/ima/ascii_runtime_measurements | grep gzip
+10 ba2tfeacebs720ae3990Ld380CIcHdebt 7c22alf ima-ng sha256:4c9dl002a28e78c03aadét Oder fo1s
+47£3243pecc55177a342509716a818E9 /usz/bin/ozsp
+
+$ getfactr -m “security --dump -e hex /usr/bin/gzip
+
+getfattr: Removing leading '/* from absolute path names
+
+# file: usr/bin/gzip
+
+Security. ima=0x04044c9d1002a28e78cO3aadét70deft019473243b8ccS5177a3485c9716a8 1869
+Security. selinux=0x73797374€S€dS£753a6f626a65637451723a62696e5£743a733000
+
+$ gzip -c /tmp/test.txt > testl.gz
+```
+### Output from ima_image_3_2.png
+```
+$ sha2Sésum /usr/bin/gzip
+d154edésacSa0a91blaadc7299£102e1d1£Sbdd3244£151a005b2e40909£7b31 /usr/bin/gzip
+$ getfattr -m “security --dump -e hex /usr/bin/gzip
+
+getfattr: Removing leading '/' from absolute path names
+
+# file: usr/bin/gzip
+
+security. ima=0x04044c9d1002a28e78c03aadéf70def£019d7£3243b8ccS5177a3485c9716a818
+bes
+
+security. selinux=0x73797374656d5£753a6£626a65637451723a62696e5£7434733000
+```
+### Output from ima_image_3_3.png
+```
+GRUB_TIMEOUT=S
+GRUB_DISTRIBUTOR="$ (sed
+GRUB_DEFAULT=saved
+GRUB_DISABLE_SUBMENU=true
+GRUB_TERMINAL OUTPUT="console"
+
+GRUB_CMDLINE_LINUX="crashkernel=auto ima_policy-tcb ima_eppraise_ccb ima_apprais
+evenforc| ima nashwsha2Sc ima auditel resune=/dev/nappez/cl-swap rd.lvm.lv=cl/=q
+ot rd.lum.1v=Cl/swap ragb quiee™
+
+GRUS DISABLE RECOVERY="crue™
+
+GRUB_ENABLE BLSCFG=true
+
+release .*$,,g" /etc/system-release)"
+```
+### Output from ima_image_3_4.png
+```
+|= sudo grub2-mkconfig -o /boot/grub2/grub.cfig
+Generating grub configuration file
+
+done
+- 2
+```
+### Output from ima_image_3_5.png
+```
+$ gzip -c /tmp/test.txt /tmp/testé.gz
+-bash: /usr/bin/gzip: Permission denied
+
+sf
+```
+### Output from ima_image_3_6.png
+```
+
+```%
